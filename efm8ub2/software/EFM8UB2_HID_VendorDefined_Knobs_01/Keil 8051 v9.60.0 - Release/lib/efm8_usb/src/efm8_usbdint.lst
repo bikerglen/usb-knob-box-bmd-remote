@@ -1,0 +1,761 @@
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE EFM8_USBDINT
+OBJECT MODULE PLACED IN .\lib\efm8_usb\src\efm8_usbdint.OBJ
+COMPILER INVOKED BY: c:\SiliconLabs\SimplicityStudio\v4\developer\toolchains\keil_8051\9.60\BIN\C51.exe C:\SiliconLabs\S
+                    -implicityStudio\v4\developer\sdks\8051\v4.1.7\Lib\efm8_usb\src\efm8_usbdint.c OMF2 SMALL DEBUG OBJECTEXTEND ROM(LARGE) W
+                    -ARNINGLEVEL(2) FLOATFUZZY(3) OPTIMIZE(8,SPEED) INTVECTOR(0X0000) INTPROMOTE INCDIR(C:\Users\glen\SimplicityStudio\v4_wor
+                    -kspace\EFM8UB2_HID_VendorDefined_Knobs_01\inc;C:\Users\glen\SimplicityStudio\v4_workspace\EFM8UB2_HID_VendorDefined_Knob
+                    -s_01\inc\config;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//kits/EFM8UB2_SLSTK2001A/config;C:/Silicon
+                    -Labs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//Lib/efm8_assert;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8
+                    -051/v4.1.7//Lib/efm8_usb/inc;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//Device/EFM8UB2/peripheral_dr
+                    -iver/inc;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//kits/common/bsp;C:/SiliconLabs/SimplicityStudio/
+                    -v4/developer/sdks/8051/v4.1.7//Device/shared/si8051Base;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//D
+                    -evice/EFM8UB2/inc) REGFILE(EFM8UB2_HID_VendorDefined_Knobs_01.ORC) PRINT(.\lib\efm8_usb\src\efm8_usbdint.lst) COND PAGEW
+                    -IDTH(120) PAGELENGTH(65) OBJECT(.\lib\efm8_usb\src\efm8_usbdint.OBJ)
+
+line level    source
+
+   1          /**************************************************************************//**
+   2           * Copyright (c) 2015 by Silicon Laboratories Inc. All rights reserved.
+   3           *
+   4           * http://developer.silabs.com/legal/version/v11/Silicon_Labs_Software_License_Agreement.txt
+   5           *****************************************************************************/
+   6          
+   7          #include "si_toolchain.h"
+   8          #include "efm8_usb.h"
+   9          #include <stdint.h>
+  10          #include <endian.h>
+  11          
+  12          // -----------------------------------------------------------------------------
+  13          // Global variables
+  14          
+  15          extern SI_SEGMENT_VARIABLE(myUsbDevice, USBD_Device_TypeDef, MEM_MODEL_SEG);
+  16          extern SI_SEGMENT_VARIABLE(txZero[2], const uint8_t, SI_SEG_CODE);
+  17          
+  18          // -----------------------------------------------------------------------------
+  19          // Function prototypes
+  20          
+  21          static void handleUsbEp0Int(void);
+  22          static void handleUsbResetInt(void);
+  23          static void handleUsbSuspendInt(void);
+  24          static void handleUsbResumeInt(void);
+  25          static void handleUsbEp0Tx(void);
+  26          static void handleUsbEp0Rx(void);
+  27          static void USB_ReadFIFOSetup(void);
+  28          
+  29          #if (SLAB_USB_EP1IN_USED)
+  30          void handleUsbIn1Int(void);
+  31          #endif // SLAB_USB_EP1IN_USED
+  32          #if (SLAB_USB_EP2IN_USED)
+              void handleUsbIn2Int(void);
+              #endif // SLAB_USB_EP2IN_USED
+  35          #if (SLAB_USB_EP3IN_USED)
+              void handleUsbIn3Int(void);
+              #endif // SLAB_USB_EP3IN_USED
+  38          
+  39          #if (SLAB_USB_EP1OUT_USED)
+  40          void handleUsbOut1Int(void);
+  41          #endif // SLAB_USB_EP1OUT_USED
+  42          #if (SLAB_USB_EP2OUT_USED)
+              void handleUsbOut2Int(void);
+              #endif // SLAB_USB_EP2OUT_USED
+  45          #if (SLAB_USB_EP3OUT_USED)
+              void handleUsbOut3Int(void);
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 2   
+
+              #endif // SLAB_USB_EP3OUT_USED
+  48          
+  49          void SendEp0Stall(void);
+  50          
+  51          #if SLAB_USB_UTF8_STRINGS == 1
+              static uint8_t decodeUtf8toUcs2(
+                              const uint8_t *pUtf8in,
+                              SI_VARIABLE_SEGMENT_POINTER(pUcs2out, uint16_t, MEM_MODEL_SEG));
+              #endif
+  56          
+  57          // -----------------------------------------------------------------------------
+  58          // Functions
+  59          
+  60          /***************************************************************************//**
+  61           * @brief       First-level handler for USB peripheral interrupt
+  62           * @details     If @ref SLAB_USB_POLLED_MODE is 1, this becomes a regular
+  63           *              function instead of an ISR and must be called by the application
+  64           *              periodically.
+  65           ******************************************************************************/
+  66          #if (SLAB_USB_POLLED_MODE == 0)
+  67          SI_INTERRUPT(usbIrqHandler, USB0_IRQn)
+  68          #else
+              void usbIrqHandler(void)
+              #endif
+  71          {
+  72   1        uint8_t statusCommon, statusIn, statusOut, indexSave;
+  73   1      
+  74   1      #if SLAB_USB_HANDLER_CB
+                // Callback to user before processing
+                USBD_EnterHandler();
+              #endif
+  78   1      
+  79   1        // Get the interrupt sources
+  80   1        statusCommon = USB_GetCommonInts();
+  81   1        statusIn = USB_GetInInts();
+  82   1        statusOut = USB_GetOutInts();
+  83   1      
+  84   1      #if SLAB_USB_POLLED_MODE
+                if ((statusCommon == 0) && (statusIn == 0) && (statusOut == 0))
+                {
+                  return;
+                }
+              #endif
+  90   1      
+  91   1        // Save the current index
+  92   1        indexSave = USB_GetIndex();
+  93   1      
+  94   1        // Check Common USB Interrupts
+  95   1        if (USB_IsSofIntActive(statusCommon))
+  96   1        {
+  97   2      #if SLAB_USB_SOF_CB
+  98   2          USBD_SofCb(USB_GetSofNumber());
+  99   2      #endif // SLAB_USB_SOF_CB
+ 100   2      
+ 101   2          // Check for unhandled USB packets on EP0 and set the corresponding IN or
+ 102   2          // OUT interrupt active flag if necessary.
+ 103   2          if (((myUsbDevice.ep0.misc.bits.outPacketPending == true) && (myUsbDevice.ep0.state == D_EP_RECEIVING)
+             -) ||
+ 104   2              ((myUsbDevice.ep0.misc.bits.inPacketPending == true) && (myUsbDevice.ep0.state == D_EP_TRANSMITTIN
+             -G)))
+ 105   2          {
+ 106   3            USB_SetEp0IntActive(statusIn);
+ 107   3          }
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 3   
+
+ 108   2          // Check for unhandled USB OUT packets and set the corresponding OUT
+ 109   2          // interrupt active flag if necessary.
+ 110   2      #if SLAB_USB_EP1OUT_USED
+ 111   2          if ((myUsbDevice.ep1out.misc.bits.outPacketPending == true) && (myUsbDevice.ep1out.state == D_EP_RECEI
+             -VING))
+ 112   2          {
+ 113   3            USB_SetOut1IntActive(statusOut);
+ 114   3          }
+ 115   2      #endif
+ 116   2      #if SLAB_USB_EP2OUT_USED
+                  if ((myUsbDevice.ep2out.misc.bits.outPacketPending == true) && (myUsbDevice.ep2out.state == D_EP_RECEI
+             -VING))
+                  {
+                    USB_SetOut2IntActive(statusOut);
+                  }
+              #endif
+ 122   2      #if SLAB_USB_EP3OUT_USED
+                  if ((myUsbDevice.ep3out.misc.bits.outPacketPending == true) && (myUsbDevice.ep3out.state == D_EP_RECEI
+             -VING))
+                  {
+                    USB_SetOut3IntActive(statusOut);
+                  }
+              #endif
+ 128   2      #if (SLAB_USB_EP3IN_USED && (SLAB_USB_EP3IN_TRANSFER_TYPE == USB_EPTYPE_ISOC))
+                  if ((myUsbDevice.ep3in.misc.bits.inPacketPending == true) && (myUsbDevice.ep3in.state == D_EP_TRANSMIT
+             -TING))
+                  {
+                    USB_SetIn3IntActive(statusIn);
+                  }
+              #endif
+ 134   2        }
+ 135   1      
+ 136   1        if (USB_IsResetIntActive(statusCommon))
+ 137   1        {
+ 138   2          handleUsbResetInt();
+ 139   2      
+ 140   2          // If VBUS is not present on detection of a USB reset, enter suspend mode.
+ 141   2      #if (SLAB_USB_PWRSAVE_MODE & USB_PWRSAVE_MODE_ONVBUSOFF)
+                  if (USB_IsVbusOn() == false)
+                  {
+                    USB_SetSuspendIntActive(statusCommon);
+                  }
+              #endif
+ 147   2        }
+ 148   1      
+ 149   1        if (USB_IsResumeIntActive(statusCommon))
+ 150   1        {
+ 151   2          handleUsbResumeInt();
+ 152   2        }
+ 153   1      
+ 154   1        if (USB_IsSuspendIntActive(statusCommon))
+ 155   1        {
+ 156   2          handleUsbSuspendInt();
+ 157   2        }
+ 158   1      
+ 159   1      #if SLAB_USB_EP3IN_USED
+                if (USB_IsIn3IntActive(statusIn))
+                {
+                  handleUsbIn3Int();
+                }
+              #endif  // EP3IN_USED
+ 165   1      
+ 166   1      #if SLAB_USB_EP3OUT_USED
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 4   
+
+                if (USB_IsOut3IntActive(statusOut))
+                {
+                  handleUsbOut3Int();
+                }
+              #endif  // EP3OUT_USED
+ 172   1      
+ 173   1      #if SLAB_USB_EP2IN_USED
+                if (USB_IsIn2IntActive(statusIn))
+                {
+                  handleUsbIn2Int();
+                }
+              #endif  // EP2IN_USED
+ 179   1      
+ 180   1      #if SLAB_USB_EP1IN_USED
+ 181   1        if (USB_IsIn1IntActive(statusIn))
+ 182   1        {
+ 183   2          handleUsbIn1Int();
+ 184   2        }
+ 185   1      #endif  // EP1IN_USED
+ 186   1      
+ 187   1      #if SLAB_USB_EP2OUT_USED
+                if (USB_IsOut2IntActive(statusOut))
+                {
+                  handleUsbOut2Int();
+                }
+              #endif  // EP2OUT_USED
+ 193   1      
+ 194   1      #if SLAB_USB_EP1OUT_USED
+ 195   1        if (USB_IsOut1IntActive(statusOut))
+ 196   1        {
+ 197   2          handleUsbOut1Int();
+ 198   2        }
+ 199   1      #endif  // EP1OUT_USED
+ 200   1      
+ 201   1        // Check USB Endpoint 0 Interrupt
+ 202   1        if (USB_IsEp0IntActive(statusIn))
+ 203   1        {
+ 204   2          handleUsbEp0Int();
+ 205   2        }
+ 206   1      
+ 207   1        // Restore index
+ 208   1        USB_SetIndex(indexSave);
+ 209   1      
+ 210   1      #if SLAB_USB_HANDLER_CB
+                // Callback to user before exiting
+                USBD_ExitHandler();
+              #endif
+ 214   1      }
+ 215          
+ 216          /***************************************************************************//**
+ 217           * @brief       Handles Endpoint 0 transfer interrupt
+ 218           ******************************************************************************/
+ 219          static void handleUsbEp0Int(void)
+ 220          {
+ 221   1        USB_Status_TypeDef retVal = USB_STATUS_REQ_UNHANDLED;
+ 222   1      
+ 223   1        USB_SetIndex(0);
+ 224   1      
+ 225   1        if (USB_Ep0SentStall() || USB_GetSetupEnd())
+ 226   1        {
+ 227   2          USB_Ep0ClearSentStall();
+ 228   2          USB_ServicedSetupEnd();
+ 229   2          myUsbDevice.ep0.state = D_EP_IDLE;
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 5   
+
+ 230   2          myUsbDevice.ep0.misc.c = 0;
+ 231   2        }
+ 232   1        if (USB_Ep0OutPacketReady())
+ 233   1        {
+ 234   2          if (myUsbDevice.ep0.misc.bits.waitForRead == true)
+ 235   2          {
+ 236   3            myUsbDevice.ep0.misc.bits.outPacketPending = true;
+ 237   3          }
+ 238   2          else if (myUsbDevice.ep0.state == D_EP_IDLE)
+ 239   2          {
+ 240   3            myUsbDevice.ep0String.c = USB_STRING_DESCRIPTOR_UTF16LE;
+ 241   3            USB_ReadFIFOSetup();
+ 242   3      
+ 243   3            // Vendor unique, Class or Standard setup commands override?
+ 244   3      #if SLAB_USB_SETUP_CMD_CB
+ 245   3            retVal = USBD_SetupCmdCb(&myUsbDevice.setup);
+ 246   3      
+ 247   3            if (retVal == USB_STATUS_REQ_UNHANDLED)
+ 248   3            {
+ 249   4      #endif
+ 250   4              if (myUsbDevice.setup.bmRequestType.Type == USB_SETUP_TYPE_STANDARD)
+ 251   4              {
+ 252   5                retVal = USBDCH9_SetupCmd();
+ 253   5              }
+ 254   4      #if SLAB_USB_SETUP_CMD_CB
+ 255   4            }
+ 256   3      #endif
+ 257   3      
+ 258   3            // Reset index to 0 in case the call to USBD_SetupCmdCb() or
+ 259   3            // USBDCH9_SetupCmd() changed it.
+ 260   3            USB_SetIndex(0);
+ 261   3      
+ 262   3            // Put the Enpoint 0 hardware into the correct state here.
+ 263   3            if (retVal == USB_STATUS_OK)
+ 264   3            {
+ 265   4              // If wLength is 0, there is no Data Phase
+ 266   4              // Set both the Serviced Out Packet Ready and Data End bits
+ 267   4              if (myUsbDevice.setup.wLength == 0)
+ 268   4              {
+ 269   5                USB_Ep0SetLastOutPacketReady();
+ 270   5              }
+ 271   4              // If wLength is non-zero, there is a Data Phase.
+ 272   4              // Set only the Serviced Out Packet Ready bit.
+ 273   4              else
+ 274   4              {
+ 275   5                USB_Ep0ServicedOutPacketReady();
+ 276   5                
+ 277   5      #if SLAB_USB_SETUP_CMD_CB
+ 278   5                // If OUT packet but callback didn't set up a USBD_Read and we are expecting a 
+ 279   5                // data byte then we need to wait for the read to be setup and NACK packets until
+ 280   5                // USBD_Read is called.
+ 281   5                if ((myUsbDevice.setup.bmRequestType.Direction == USB_SETUP_DIR_OUT)
+ 282   5                    && (myUsbDevice.ep0.state != D_EP_RECEIVING))
+ 283   5                {
+ 284   6                  myUsbDevice.ep0.misc.bits.waitForRead = true;
+ 285   6                }
+ 286   5      #endif
+ 287   5              }
+ 288   4            }
+ 289   3            // If the setup transaction detected an error, send a stall
+ 290   3            else
+ 291   3            {
+ 292   4              SendEp0Stall();
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 6   
+
+ 293   4            }
+ 294   3          }
+ 295   2          else if (myUsbDevice.ep0.state == D_EP_RECEIVING)
+ 296   2          {
+ 297   3            handleUsbEp0Rx();
+ 298   3          }
+ 299   2          else
+ 300   2          {
+ 301   3            myUsbDevice.ep0.misc.bits.outPacketPending = true;
+ 302   3          }
+ 303   2        }
+ 304   1        if ((myUsbDevice.ep0.state == D_EP_TRANSMITTING) && (USB_Ep0InPacketReady() == 0))
+ 305   1        {
+ 306   2          handleUsbEp0Tx();
+ 307   2        }
+ 308   1      }
+ 309          
+ 310          /***************************************************************************//**
+ 311           * @brief       Reads and formats a setup packet
+ 312           ******************************************************************************/
+ 313          static void USB_ReadFIFOSetup(void)
+ 314          {
+ 315   1        SI_VARIABLE_SEGMENT_POINTER(ptr, uint16_t, MEM_MODEL_SEG) = (SI_VARIABLE_SEGMENT_POINTER(, uint16_t, MEM
+             -_MODEL_SEG))&myUsbDevice.setup;
+ 316   1      
+ 317   1        USB_ReadFIFO(0, 8, (SI_VARIABLE_SEGMENT_POINTER(, uint8_t, SI_SEG_GENERIC))ptr);
+ 318   1      
+ 319   1        // Modify for Endian-ness of the compiler
+ 320   1        ptr[1] = le16toh(ptr[1]);
+ 321   1        ptr[2] = le16toh(ptr[2]);
+ 322   1        ptr[3] = le16toh(ptr[3]);
+ 323   1      }
+ 324          
+ 325          /***************************************************************************//**
+ 326           * @brief       Handles USB port reset interrupt
+ 327           * @details     After receiving a USB reset, halt all endpoints except for
+ 328           *              Endpoint 0, set the device state, and configure USB hardware.
+ 329           ******************************************************************************/
+ 330          static void handleUsbResetInt(void)
+ 331          {
+ 332   1        // Setup EP0 to receive SETUP packets
+ 333   1        myUsbDevice.ep0.state = D_EP_IDLE;
+ 334   1      
+ 335   1        // Halt all other endpoints
+ 336   1      #if SLAB_USB_EP1IN_USED
+ 337   1        myUsbDevice.ep1in.state = D_EP_HALT;
+ 338   1      #endif
+ 339   1      #if SLAB_USB_EP2IN_USED
+                myUsbDevice.ep2in.state = D_EP_HALT;
+              #endif
+ 342   1      #if SLAB_USB_EP3IN_USED
+                myUsbDevice.ep3in.state = D_EP_HALT;
+              #endif
+ 345   1      #if SLAB_USB_EP1OUT_USED
+ 346   1        myUsbDevice.ep1out.state = D_EP_HALT;
+ 347   1      #endif
+ 348   1      #if SLAB_USB_EP2OUT_USED
+                myUsbDevice.ep2out.state = D_EP_HALT;
+              #endif
+ 351   1      #if SLAB_USB_EP3OUT_USED
+                myUsbDevice.ep3out.state = D_EP_HALT;
+              #endif
+ 354   1      
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 7   
+
+ 355   1        // After a USB reset, some USB hardware configurations will be reset and must
+ 356   1        // be reconfigured.
+ 357   1      
+ 358   1        // Re-enable clock recovery
+ 359   1      #if SLAB_USB_CLOCK_RECOVERY_ENABLED
+ 360   1      #if SLAB_USB_FULL_SPEED
+ 361   1        USB_EnableFullSpeedClockRecovery();
+ 362   1      #else
+                USB_EnableLowSpeedClockRecovery();
+              #endif
+ 365   1      #endif
+ 366   1      
+ 367   1        // Re-enable USB interrupts
+ 368   1        USB_EnableSuspendDetection();
+ 369   1        USB_EnableDeviceInts();
+ 370   1      
+ 371   1        // If the device is bus-powered, always put it in the Default state.
+ 372   1        // If the device is self-powered and VBUS is present, put the device in the
+ 373   1        // Default state. Otherwise, put it in the Attached state.
+ 374   1      #if (!SLAB_USB_BUS_POWERED) && \
+ 375   1          (!(SLAB_USB_PWRSAVE_MODE & USB_PWRSAVE_MODE_ONVBUSOFF))
+ 376   1        if (USB_IsVbusOn())
+ 377   1        {
+ 378   2          USBD_SetUsbState(USBD_STATE_DEFAULT);
+ 379   2        }
+ 380   1        else
+ 381   1        {
+ 382   2          USBD_SetUsbState(USBD_STATE_ATTACHED);
+ 383   2        }
+ 384   1      #else
+                USBD_SetUsbState(USBD_STATE_DEFAULT);
+              #endif  // (!(SLAB_USB_PWRSAVE_MODE & USB_PWRSAVE_MODE_ONVBUSOFF))
+ 387   1      
+ 388   1      #if SLAB_USB_RESET_CB
+ 389   1        // Make the USB Reset Callback
+ 390   1        USBD_ResetCb();
+ 391   1      #endif
+ 392   1      }
+ 393          
+ 394          /***************************************************************************//**
+ 395           * @brief       Handle USB port suspend interrupt
+ 396           * @details     After receiving a USB reset, set the device state and
+ 397           *              call @ref USBD_Suspend() if configured to do so in
+ 398           *              @ref SLAB_USB_PWRSAVE_MODE
+ 399           ******************************************************************************/
+ 400          static void handleUsbSuspendInt(void)
+ 401          {
+ 402   1        if (myUsbDevice.state >= USBD_STATE_POWERED)
+ 403   1        {
+ 404   2          USBD_SetUsbState(USBD_STATE_SUSPENDED);
+ 405   2      
+ 406   2      #if (SLAB_USB_PWRSAVE_MODE & USB_PWRSAVE_MODE_ONSUSPEND)
+                  USBD_Suspend();
+              #endif
+ 409   2        }
+ 410   1      }
+ 411          
+ 412          /***************************************************************************//**
+ 413           * @brief       Handles USB port resume interrupt
+ 414           * @details     Restore the device state to its previous value.
+ 415           ******************************************************************************/
+ 416          static void handleUsbResumeInt(void)
+ 417          {
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 8   
+
+ 418   1        USBD_SetUsbState(myUsbDevice.savedState);
+ 419   1      }
+ 420          
+ 421          /***************************************************************************//**
+ 422           * @brief       Handles transmit data phase on Endpoint 0
+ 423           ******************************************************************************/
+ 424          static void handleUsbEp0Tx(void)
+ 425          {
+ 426   1        uint8_t count, count_snapshot, i;
+ 427   1        bool callback = myUsbDevice.ep0.misc.bits.callback;
+ 428   1      
+ 429   1        // The number of bytes to send in the next packet must be less than or equal
+ 430   1        // to the maximum EP0 packet size.
+ 431   1        count = (myUsbDevice.ep0.remaining >= USB_EP0_SIZE) ?
+ 432   1                 USB_EP0_SIZE : myUsbDevice.ep0.remaining;
+ 433   1      
+ 434   1        // Save the packet size for future use.
+ 435   1        count_snapshot = count;
+ 436   1      
+ 437   1        // Strings can use the USB_STRING_DESCRIPTOR_UTF16LE_PACKED type to pack
+ 438   1        // UTF16LE data without the zero's between each character.
+ 439   1        // If the current string is of type USB_STRING_DESCRIPTOR_UTF16LE_PACKED,
+ 440   1        // unpack it by inserting a zero between each character in the string.
+ 441   1        if ((myUsbDevice.ep0String.encoding.type == USB_STRING_DESCRIPTOR_UTF16LE_PACKED)
+ 442   1      #if SLAB_USB_UTF8_STRINGS == 1
+                 || (myUsbDevice.ep0String.encoding.type == USB_STRING_DESCRIPTOR_UTF8)
+              #endif
+ 445   1           )
+ 446   1        {
+ 447   2          // If ep0String.encoding.init is true, this is the beginning of the string.
+ 448   2          // The first two bytes of the string are the bLength and bDescriptorType
+ 449   2          // fields. These are not packed like the reset of the string, so write them
+ 450   2          // to the FIFO and set ep0String.encoding.init to false.
+ 451   2          if (myUsbDevice.ep0String.encoding.init == true)
+ 452   2          {
+ 453   3            USB_WriteFIFO(0, 2, myUsbDevice.ep0.buf, false);
+ 454   3            myUsbDevice.ep0.buf += 2;
+ 455   3            count -= 2;
+ 456   3            myUsbDevice.ep0String.encoding.init = false;
+ 457   3          }
+ 458   2      
+ 459   2          // Insert a 0x00 between each character of the string.
+ 460   2          for (i = 0; i < count / 2; i++)
+ 461   2          {
+ 462   3      #if SLAB_USB_UTF8_STRINGS == 1
+                    if (myUsbDevice.ep0String.encoding.type == USB_STRING_DESCRIPTOR_UTF8)
+                    {
+                      SI_SEGMENT_VARIABLE(ucs2, uint16_t, MEM_MODEL_SEG);
+                      uint8_t utf8count;
+              
+                      // decode the utf8 into ucs2 for usb string
+                      utf8count = decodeUtf8toUcs2(myUsbDevice.ep0.buf, &ucs2);
+              
+                      // if consumed utf8 bytes is 0, it means either null byte was
+                      // input or bad utf8 byte sequence.  Either way its an error and
+                      // there's not much we can do.  So just advance the input string
+                      // by one character and keep going until count is expired.
+                      if (utf8count == 0)
+                      {
+                        utf8count = 1;
+                      }
+              
+                      // adjust to next char in utf8 byte sequence
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 9   
+
+                      myUsbDevice.ep0.buf += utf8count;
+                      ucs2 = htole16(ucs2); // usb 16-bit chars are little endian
+                      USB_WriteFIFO(0, 2, (SI_VARIABLE_SEGMENT_POINTER(, uint8_t, SI_SEG_GENERIC))&ucs2, false);
+                    }
+                    else
+              #endif
+ 487   3            {
+ 488   4              USB_WriteFIFO(0, 1, (SI_VARIABLE_SEGMENT_POINTER(, uint8_t, SI_SEG_GENERIC))myUsbDevice.ep0.buf, f
+             -alse);
+ 489   4              myUsbDevice.ep0.buf++;
+ 490   4              USB_WriteFIFO(0, 1, (SI_VARIABLE_SEGMENT_POINTER(, uint8_t, SI_SEG_GENERIC))&txZero, false);
+ 491   4            }
+ 492   3          }
+ 493   2        }
+ 494   1        // For any data other than USB_STRING_DESCRIPTOR_UTF16LE_PACKED, just send the
+ 495   1        // data normally.
+ 496   1        else
+ 497   1        {
+ 498   2          USB_WriteFIFO(0, count, myUsbDevice.ep0.buf, false);
+ 499   2          myUsbDevice.ep0.buf += count;
+ 500   2        }
+ 501   1      
+ 502   1        myUsbDevice.ep0.misc.bits.inPacketPending = false;
+ 503   1        myUsbDevice.ep0.remaining -= count_snapshot;
+ 504   1      
+ 505   1        // If the last packet of the transfer is exactly the maximum EP0 packet size,
+ 506   1        // we may need to send a ZLP (zero-length packet) after the last data packet
+ 507   1        // to signal to the host that the transfer is complete.
+ 508   1        if ((myUsbDevice.ep0.remaining == 0)
+ 509   1            && (myUsbDevice.ep0.misc.bits.transmitZlp == false))
+ 510   1        {
+ 511   2          USB_Ep0SetLastInPacketReady();
+ 512   2          myUsbDevice.ep0.state = D_EP_IDLE;
+ 513   2          myUsbDevice.ep0String.c = USB_STRING_DESCRIPTOR_UTF16LE;
+ 514   2          myUsbDevice.ep0.misc.c = 0;
+ 515   2        }
+ 516   1        else
+ 517   1        {
+ 518   2          USB_Ep0SetInPacketReady();
+ 519   2      
+ 520   2          // If there are no remaining bytes to send, we are here because we need to
+ 521   2          // send a ZLP before the Data Phase of this Control Transfer is complete.
+ 522   2          // Clear transmitZlp here so that USB_Ep0SetLastInPacketReady() will be
+ 523   2          // called the next time this function is called.
+ 524   2          if (myUsbDevice.ep0.remaining == 0)
+ 525   2          {
+ 526   3            myUsbDevice.ep0.misc.bits.transmitZlp = false;
+ 527   3          }
+ 528   2        }
+ 529   1        // Make callback if requested
+ 530   1        if (callback == true)
+ 531   1        {
+ 532   2          USBD_XferCompleteCb(EP0, USB_STATUS_OK, count_snapshot, myUsbDevice.ep0.remaining);
+ 533   2        }
+ 534   1      }
+ 535          
+ 536          /***************************************************************************//**
+ 537           * @brief       Handles receive data phase on Endpoint 0
+ 538           ******************************************************************************/
+ 539          void handleUsbEp0Rx(void)
+ 540          {
+ 541   1        uint8_t count;
+ 542   1        USB_Status_TypeDef status;
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 10  
+
+ 543   1        bool callback = myUsbDevice.ep0.misc.bits.callback;
+ 544   1      
+ 545   1        // Get the number of bytes received
+ 546   1        count = USB_Ep0GetCount();
+ 547   1      
+ 548   1        // If the call to USBD_Read() did not give a large enough buffer to hold this
+ 549   1        // data, set the outPacketPending flag and signal an RX overrun.
+ 550   1        if (myUsbDevice.ep0.remaining < count)
+ 551   1        {
+ 552   2          myUsbDevice.ep0.state = D_EP_IDLE;
+ 553   2          myUsbDevice.ep0.misc.bits.outPacketPending = true;
+ 554   2          status = USB_STATUS_EP_RX_BUFFER_OVERRUN;
+ 555   2        }
+ 556   1        else
+ 557   1        {
+ 558   2          USB_ReadFIFO(0, count, myUsbDevice.ep0.buf);
+ 559   2          myUsbDevice.ep0.buf += count;
+ 560   2          myUsbDevice.ep0.remaining -= count;
+ 561   2          status = USB_STATUS_OK;
+ 562   2      
+ 563   2          // If the last packet of the transfer is exactly the maximum EP0 packet
+ 564   2          // size, we will must wait to receive a ZLP (zero-length packet) after the
+ 565   2          // last data packet. This signals that the host has completed the transfer.
+ 566   2          // Check for the ZLP packet case here.
+ 567   2          if ((myUsbDevice.ep0.remaining == 0) && (count != USB_EP0_SIZE))
+ 568   2          {
+ 569   3            USB_Ep0SetLastOutPacketReady();
+ 570   3            myUsbDevice.ep0.state = D_EP_IDLE;
+ 571   3            myUsbDevice.ep0.misc.bits.callback = false;
+ 572   3          }
+ 573   2          else
+ 574   2          {
+ 575   3            // Do not call USB_Ep0SetLastOutPacketReady() until we get the ZLP.
+ 576   3            USB_Ep0ServicedOutPacketReady();
+ 577   3          }
+ 578   2        }
+ 579   1      
+ 580   1        // Make callback if requested
+ 581   1        if (callback == true)
+ 582   1        {
+ 583   2          USBD_XferCompleteCb(EP0, status, count, myUsbDevice.ep0.remaining);
+ 584   2        }
+ 585   1      }
+ 586          
+ 587          
+ 588          /***************************************************************************//**
+ 589           * @brief       Send a procedural stall on Endpoint 0
+ 590           ******************************************************************************/
+ 591          void SendEp0Stall(void)
+ 592          {
+ 593   1        USB_SetIndex(0);
+ 594   1        myUsbDevice.ep0.state = D_EP_STALL;
+ 595   1        USB_Ep0SendStall();
+ 596   1      }
+ 597          
+ 598          #if SLAB_USB_UTF8_STRINGS == 1
+              /***************************************************************************//**
+               *  Decodes UTF-8 to UCS-2 (16-bit) character encoding that is used
+               *  for USB string descriptors.
+               * 
+               *  @param pUtf8in pointer to next character in UTF-8 string
+               *  @param pUcs2out pointer to location for 16-bit character output
+               * 
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 11  
+
+               *  Decodes a UTF-8 byte sequence into a single UCS-2 character.  This
+               *  will only decode up to 16-bit code point and will not handle the
+               *  21-bit case (4 bytes input).
+               * 
+               *  For valid cases, the UTF8 character sequence decoded into a 16-bit
+               *  character and stored at the location pointed at by _pUcs2out_.
+               *  The function will then return the number of input bytes that were
+               *  consumed (1, 2, or 3).  The caller can use the return value to find
+               *  the start of the next character sequence in a utf-8 string.
+               * 
+               *  If either of the input pointers are NULL, then 0 is returned.
+               * 
+               *  If the first input character is NULL, then the output 16-bit value
+               *  will be set to NULL and the function will return 0.
+               * 
+               *  If any other invalid sequence is detected, then the 16-bit output
+               *  will be set to the equivalent of the question mark character (0x003F)
+               *  and the return code will be 0.
+               * 
+               *  @return count of UTF8 bytes consumed
+               ******************************************************************************/
+              static uint8_t decodeUtf8toUcs2(
+                              const uint8_t *pUtf8in,
+                              SI_VARIABLE_SEGMENT_POINTER(pUcs2out, uint16_t, MEM_MODEL_SEG))
+              {
+                uint8_t ret = 0;
+              
+                // check the input pointers
+                if (!pUtf8in || !pUcs2out)
+                {
+                  return 0;
+                }
+              
+                // set default decode to error '?';
+                *pUcs2out = '?';
+              
+                // valid cases:
+                // 0xxxxxxx (7 bits)
+                // 110xxxxx 10xxxxxx (11 bits)
+                // 1110xxxx 10xxxxxx 10xxxxxx (16 bits)
+              
+                // null input
+                if (pUtf8in[0] == 0)
+                {
+                  *pUcs2out = 0;
+                  ret = 0;
+                }
+              
+                // 7-bit char
+                else if (pUtf8in[0] < 128)
+                {
+                  *pUcs2out = pUtf8in[0];
+                  ret = 1;
+                }
+              
+                // 11-bit char
+                else if ((pUtf8in[0] & 0xE0) == 0xC0)
+                {
+                  if ((pUtf8in[1] & 0xC0) == 0x80)
+                  {
+                    *pUcs2out = ((pUtf8in[0] & 0x1F) << 6) | (pUtf8in[1] & 0x3F);
+                    ret = 2;
+                  }
+C51 COMPILER V9.60.0.0   EFM8_USBDINT                                                      04/23/2021 07:39:26 PAGE 12  
+
+                }
+              
+                // 16-bit char
+                else if ((pUtf8in[0] & 0xF0) == 0xE0)
+                {
+                  if ((pUtf8in[1] & 0xC0) == 0x80)
+                  {
+                    if ((pUtf8in[2] & 0xC0) == 0x80)
+                    {
+                      *pUcs2out = ((pUtf8in[0] & 0x0F) << 12)
+                                | ((pUtf8in[1] & 0x3F) << 6)
+                                | (pUtf8in[2] & 0x3F);
+                      ret = 3;
+                    }
+                  }
+                }
+              
+                return ret;
+              }
+              #endif // SLAB_USB_UTF8_STRINGS
+ 689          
+ 690          // This function is called from USBD_Init(). It forces the user project to pull
+ 691          // this module from the library so that the declared ISR can be seen and
+ 692          // included. If this is not done then this entire module by never be included
+ 693          // and the ISR will not be present.
+ 694          void forceModuleLoad_usbint(void){}
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1064    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      11
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       2
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

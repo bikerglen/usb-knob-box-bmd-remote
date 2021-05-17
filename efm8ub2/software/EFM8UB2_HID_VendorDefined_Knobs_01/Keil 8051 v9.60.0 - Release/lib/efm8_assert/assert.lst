@@ -1,0 +1,49 @@
+C51 COMPILER V9.60.0.0   ASSERT                                                            04/23/2021 07:39:26 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE ASSERT
+OBJECT MODULE PLACED IN .\lib\efm8_assert\assert.OBJ
+COMPILER INVOKED BY: c:\SiliconLabs\SimplicityStudio\v4\developer\toolchains\keil_8051\9.60\BIN\C51.exe C:\SiliconLabs\S
+                    -implicityStudio\v4\developer\sdks\8051\v4.1.7\Lib\efm8_assert\assert.c OMF2 SMALL DEBUG OBJECTEXTEND ROM(LARGE) WARNINGL
+                    -EVEL(2) FLOATFUZZY(3) OPTIMIZE(8,SPEED) INTVECTOR(0X0000) INTPROMOTE INCDIR(C:\Users\glen\SimplicityStudio\v4_workspace\
+                    -EFM8UB2_HID_VendorDefined_Knobs_01\inc;C:\Users\glen\SimplicityStudio\v4_workspace\EFM8UB2_HID_VendorDefined_Knobs_01\in
+                    -c\config;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//kits/EFM8UB2_SLSTK2001A/config;C:/SiliconLabs/Si
+                    -mplicityStudio/v4/developer/sdks/8051/v4.1.7//Lib/efm8_assert;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.
+                    -1.7//Lib/efm8_usb/inc;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//Device/EFM8UB2/peripheral_driver/in
+                    -c;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//kits/common/bsp;C:/SiliconLabs/SimplicityStudio/v4/deve
+                    -loper/sdks/8051/v4.1.7//Device/shared/si8051Base;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//Device/E
+                    -FM8UB2/inc) REGFILE(EFM8UB2_HID_VendorDefined_Knobs_01.ORC) PRINT(.\lib\efm8_assert\assert.lst) COND PAGEWIDTH(120) PAGE
+                    -LENGTH(65) OBJECT(.\lib\efm8_assert\assert.OBJ)
+
+line level    source
+
+   1          /**************************************************************************//**
+   2           * Copyright (c) 2015 by Silicon Laboratories Inc. All rights reserved.
+   3           *
+   4           * http://developer.silabs.com/legal/version/v11/Silicon_Labs_Software_License_Agreement.txt
+   5           *****************************************************************************/
+   6             
+   7          #ifndef NDEBUG
+   8          void slab_Assert()
+   9          {
+  10   1        while ( 1 );
+  11   1      }
+  12          #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =      2    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

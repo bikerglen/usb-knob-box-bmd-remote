@@ -1,0 +1,244 @@
+C51 COMPILER V9.60.0.0   USB_0                                                             04/23/2021 07:39:26 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE USB_0
+OBJECT MODULE PLACED IN .\lib\efm8ub2\peripheralDrivers\src\usb_0.OBJ
+COMPILER INVOKED BY: c:\SiliconLabs\SimplicityStudio\v4\developer\toolchains\keil_8051\9.60\BIN\C51.exe C:\SiliconLabs\S
+                    -implicityStudio\v4\developer\sdks\8051\v4.1.7\Device\EFM8UB2\peripheral_driver\src\usb_0.c OMF2 SMALL DEBUG OBJECTEXTEND
+                    - ROM(LARGE) WARNINGLEVEL(2) FLOATFUZZY(3) OPTIMIZE(8,SPEED) INTVECTOR(0X0000) INTPROMOTE INCDIR(C:\Users\glen\Simplicity
+                    -Studio\v4_workspace\EFM8UB2_HID_VendorDefined_Knobs_01\inc;C:\Users\glen\SimplicityStudio\v4_workspace\EFM8UB2_HID_Vendo
+                    -rDefined_Knobs_01\inc\config;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//kits/EFM8UB2_SLSTK2001A/conf
+                    -ig;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//Lib/efm8_assert;C:/SiliconLabs/SimplicityStudio/v4/dev
+                    -eloper/sdks/8051/v4.1.7//Lib/efm8_usb/inc;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//Device/EFM8UB2/
+                    -peripheral_driver/inc;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8051/v4.1.7//kits/common/bsp;C:/SiliconLabs/Simp
+                    -licityStudio/v4/developer/sdks/8051/v4.1.7//Device/shared/si8051Base;C:/SiliconLabs/SimplicityStudio/v4/developer/sdks/8
+                    -051/v4.1.7//Device/EFM8UB2/inc) REGFILE(EFM8UB2_HID_VendorDefined_Knobs_01.ORC) PRINT(.\lib\efm8ub2\peripheralDrivers\sr
+                    -c\usb_0.lst) COND PAGEWIDTH(120) PAGELENGTH(65) OBJECT(.\lib\efm8ub2\peripheralDrivers\src\usb_0.OBJ)
+
+line level    source
+
+   1          /**************************************************************************//**
+   2           * Copyright (c) 2015 by Silicon Laboratories Inc. All rights reserved.
+   3           *
+   4           * http://developer.silabs.com/legal/version/v11/Silicon_Labs_Software_License_Agreement.txt
+   5           *****************************************************************************/
+   6          
+   7          #include "usb_0.h"
+   8          #include <stdbool.h>
+   9          #include <stdint.h>
+  10          
+  11          /** @addtogroup usb_0_runtime USB0 Runtime API */
+  12          
+  13          // -----------------------------------------------------------------------------
+  14          // Functions
+  15          
+  16          // -------------------------------
+  17          // Utility Functions
+  18          
+  19          /**************************************************************************//**
+  20           * @brief       Reads a 16-bit indirect USB register value
+  21           * @param [in]  regAddr
+  22           *   Address of high byte of 16-bit USB indirect register to read
+  23           * @return      16-bit register value
+  24           *****************************************************************************/
+  25          static uint16_t USB_GetShortRegister(uint8_t regAddr)
+  26          {
+  27   1        uint16_t retVal;
+  28   1      
+  29   1        USB_READ_BYTE(regAddr);
+  30   1        retVal = (USB0DAT << 8);
+  31   1        USB_READ_BYTE((regAddr - 1));
+  32   1        retVal |= USB0DAT;
+  33   1      
+  34   1        return retVal;
+  35   1      }
+  36          
+  37          // -------------------------------
+  38          // USB0 Peripheral Driver Functions
+  39          
+  40          void USB_SetIndex(uint8_t epsel)
+  41          {
+  42   1        USB_WRITE_BYTE(INDEX, epsel);
+  43   1      }
+  44          
+  45          uint8_t USB_GetCommonInts(void)
+  46          {
+C51 COMPILER V9.60.0.0   USB_0                                                             04/23/2021 07:39:26 PAGE 2   
+
+  47   1        USB_READ_BYTE(CMINT);
+  48   1        return USB0DAT;
+  49   1      }
+  50          
+  51          uint8_t USB_GetInInts(void)
+  52          {
+  53   1        USB_READ_BYTE(IN1INT);
+  54   1        return USB0DAT;
+  55   1      }
+  56          
+  57          uint8_t USB_GetOutInts(void)
+  58          {
+  59   1        USB_READ_BYTE(OUT1INT);
+  60   1        return USB0DAT;
+  61   1      }
+  62          
+  63          uint8_t USB_GetIndex(void)
+  64          {
+  65   1        USB_READ_BYTE(INDEX);
+  66   1        return USB0DAT;
+  67   1      }
+  68          
+  69          bool USB_IsSuspended(void)
+  70          {
+  71   1        USB_READ_BYTE(POWER);
+  72   1        return USB0DAT & POWER_SUSMD__SUSPENDED;
+  73   1      }
+  74          
+  75          bool USB_GetSetupEnd(void)
+  76          {
+  77   1        USB_READ_BYTE(E0CSR);
+  78   1        return USB0DAT & E0CSR_SUEND__SET;
+  79   1      }
+  80          
+  81          bool USB_Ep0SentStall(void)
+  82          {
+  83   1        USB_READ_BYTE(E0CSR);
+  84   1        return USB0DAT & E0CSR_STSTL__SET;
+  85   1      }
+  86          
+  87          bool USB_Ep0OutPacketReady(void)
+  88          {
+  89   1        USB_READ_BYTE(E0CSR);
+  90   1        return USB0DAT & E0CSR_OPRDY__SET;
+  91   1      }
+  92          
+  93          bool USB_Ep0InPacketReady(void)
+  94          {
+  95   1        USB_READ_BYTE(E0CSR);
+  96   1        return USB0DAT & E0CSR_INPRDY__SET;
+  97   1      }
+  98          
+  99          uint8_t USB_Ep0GetCount(void)
+ 100          {
+ 101   1        USB_READ_BYTE(E0CNT);
+ 102   1        return USB0DAT;
+ 103   1      }
+ 104          
+ 105          bool USB_EpnInGetSentStall(void)
+ 106          {
+ 107   1        USB_READ_BYTE(EINCSRL);
+ 108   1        return (bool)(USB0DAT & EINCSRL_STSTL__SET);
+ 109   1      }
+C51 COMPILER V9.60.0.0   USB_0                                                             04/23/2021 07:39:26 PAGE 3   
+
+ 110          
+ 111          void USB_AbortInEp(uint8_t fifoNum)
+ 112          {
+ 113   1        USB_SetIndex(fifoNum);
+ 114   1        USB_EpnInFlush();
+ 115   1        USB_EpnInFlush();
+ 116   1      }
+ 117          
+ 118          bool USB_EpnOutGetSentStall(void)
+ 119          {
+ 120   1        USB_READ_BYTE(EOUTCSRL);
+ 121   1        return (bool)(USB0DAT & EOUTCSRL_STSTL__SET);
+ 122   1      }
+ 123          
+ 124          bool USB_EpnGetOutPacketReady(void)
+ 125          {
+ 126   1        USB_READ_BYTE(EOUTCSRL);
+ 127   1        return (bool)(USB0DAT & EOUTCSRL_OPRDY__SET);
+ 128   1      }
+ 129          
+ 130          bool USB_EpnGetDataError(void)
+ 131          {
+ 132   1        USB_READ_BYTE(EOUTCSRL);
+ 133   1        return (bool)(USB0DAT & EOUTCSRL_DATERR__SET);
+ 134   1      }
+ 135          
+ 136          uint16_t USB_EpOutGetCount(void)
+ 137          {
+ 138   1        return USB_GetShortRegister(EOUTCNTH);
+ 139   1      }
+ 140          
+ 141          void USB_AbortOutEp(uint8_t fifoNum)
+ 142          {
+ 143   1        USB_SetIndex(fifoNum);
+ 144   1        USB_EpnOutFlush();
+ 145   1        USB_EpnOutFlush();
+ 146   1      }
+ 147          
+ 148          void USB_ActivateEp(uint8_t ep,
+ 149                              uint16_t packetSize,
+ 150                              bool inDir,
+ 151                              bool splitMode,
+ 152                              bool isoMode)
+ 153          {
+ 154   1        uint8_t CSRH_mask = 0;
+ 155   1        uint16_t fifoSize;
+ 156   1      
+ 157   1        USB_SetIndex(ep);
+ 158   1      
+ 159   1        // Determine the available fifoSize for a given endpoint based on the
+ 160   1        // splitMode setting
+ 161   1        fifoSize = (splitMode == true) ? (16 << ep) : (32 << ep);
+ 162   1      
+ 163   1        if (packetSize <= fifoSize)
+ 164   1        {
+ 165   2          CSRH_mask |= EINCSRH_DBIEN__ENABLED;
+ 166   2        }
+ 167   1      
+ 168   1        if (isoMode == true)
+ 169   1        {
+ 170   2          CSRH_mask |= EINCSRH_ISO__ENABLED;
+ 171   2        }
+ 172   1      
+C51 COMPILER V9.60.0.0   USB_0                                                             04/23/2021 07:39:26 PAGE 4   
+
+ 173   1        if (inDir == true)
+ 174   1        {
+ 175   2          CSRH_mask |= EINCSRH_DIRSEL__IN;
+ 176   2      
+ 177   2          if (splitMode == true)
+ 178   2          {
+ 179   3            CSRH_mask |= EINCSRH_SPLIT__ENABLED;
+ 180   3          }
+ 181   2          USB_WRITE_BYTE(EINCSRL, EINCSRL_CLRDT__BMASK);
+ 182   2          USB_WRITE_BYTE(EINCSRH, CSRH_mask);
+ 183   2        }
+ 184   1        else // OUT
+ 185   1        {
+ 186   2          USB_WRITE_BYTE(EOUTCSRL, EOUTCSRL_CLRDT__BMASK);
+ 187   2          USB_WRITE_BYTE(EOUTCSRH, CSRH_mask);
+ 188   2      
+ 189   2          if (splitMode == false)
+ 190   2          {
+ 191   3            USB_WRITE_BYTE(EINCSRH, 0);
+ 192   3          }
+ 193   2        }
+ 194   1      }
+ 195          
+ 196          uint16_t USB_GetSofNumber(void)
+ 197          {
+ 198   1        return USB_GetShortRegister(FRAMEH);
+ 199   1      }
+ 200          
+ 201          /**  @} (end addtogroup usb_0_runtime USB0 Runtime API) */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    465    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       3
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
